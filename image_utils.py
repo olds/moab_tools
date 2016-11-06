@@ -75,12 +75,12 @@ def create_filename(prefix, lat, lon):
     return "%s_%s_%s" % (prefix, current_time_str, tag)
 
 def fetch_original_image(url, prefix):
-    urllib.urlretrieve(url, hashlib.md5(create_filename(prefix)))
+    urllib.urlretrieve(url, hashlib.md5(prefix + datetime.datetime.now()))
 
-def overlay_weather(prefix):
+def overlay_weather(prefix, lat, lon):
     temp_data = get_temp()
     wind_data = get_wind()
-    output_filename = create_filename(prefix)
+    output_filename = create_filename(prefix, lat, lon)
     
     temp_str = str(temp_data[0])+"° F | "+str(temp_data[1])+ "° C"
     wind_str = str(wind_data[0])+" MPH "+wind_data[1]
