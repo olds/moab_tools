@@ -20,6 +20,16 @@ class Location:
         self.overlay_time = overlay_time
         self.weather_data = forecastio.load_forecast(config.DARKSKY_API_KEY, self.lat, self.lon, lazy=False)
 
+    def _get_spaces_session(self):
+        bsession = session.Session()
+        client = bsession.client('s3',
+                                region_name='sfo2',
+                                endpoint_url='https://sfo2.digitaloceanspaces.com',
+                                aws_access_key_id=config.ACCESS_ID,
+                                aws_secret_access_key=config.SECRET_KEY)
+
+        return client
+
     def fetch_raw_image(self):
         """
         Returns the image object for a particular location.
@@ -135,12 +145,7 @@ class Location:
             os.remove(tmp_file)
         img.save(tmp_file)
 
-        bsession = session.Session()
-        client = bsession.client('s3',
-                                region_name='sfo2',
-                                endpoint_url='https://moab.sfo2.digitaloceanspaces.com',
-                                aws_access_key_id=config.ACCESS_ID,
-                                aws_secret_access_key=config.SECRET_KEY)
+        client = self._get_spaces_session()
 
         client.upload_file(Filename=tmp_file,
                            Bucket='moab',
@@ -185,3 +190,41 @@ class Location:
     def process(self):
         img = self.get_latest_image()
         self.save_image(img)
+
+
+    def get_image_list(self, date, exclude_pattern=None):
+        image_list =  self._get_spaces_session().list_objects(Bucket=self.prefix, Prefix="%s_%s" % (self.prefix, date))['Contents']
+
+        image_files = []
+        for v in image_list:
+            image_filename = v['Key']
+
+            if exclude_pattern and exclude_pattern in image_filename:
+                continue
+
+            image_files.append(image_filename)
+
+        return image_files
+
+    def download_image_list(self, date):
+
+        client = self._get_spaces_session()
+        folder_path = "/tmp/%s_%s/" % (self.prefix, date)
+
+        if not os.path.isdir(folder_path):
+            os.mkdir(folder_path)
+
+        image_list = self.get_image_list(date)
+        for img in image_list:
+            client.download_file(self.prefix, img, "%s/%s" % (folder_path, img.split("/")[1]))
+
+
+    def create_video(self, date):
+        folder_path = "/tmp/%s_%s/" % (self.prefix, date)
+        import ffmpeg
+        (
+            ffmpeg
+                .input("%s/*.png" % folder_path, pattern_type='glob', framerate=6)
+                .output('%s.mp4' % date)
+                .run()
+        )
