@@ -1,0 +1,70 @@
+<html>
+  <head>
+  <link href="http://vjs.zencdn.net/5.11.8/video-js.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Roboto:900" rel="stylesheet">
+  <link rel="apple-touch-icon" sizes="57x57" href="apple-icon-57x57.png">
+  <link rel="apple-touch-icon" sizes="60x60" href="apple-icon-60x60.png">
+  <link rel="apple-touch-icon" sizes="72x72" href="apple-icon-72x72.png">
+  <link rel="apple-touch-icon" sizes="76x76" href="apple-icon-76x76.png">
+  <link rel="apple-touch-icon" sizes="114x114" href="apple-icon-114x114.png">
+  <link rel="apple-touch-icon" sizes="120x120" href="apple-icon-120x120.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="apple-icon-144x144.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="apple-icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-icon-180x180.png">
+  <link rel="icon" type="image/png" sizes="192x192"  href="android-icon-192x192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="msapplication-TileColor" content="#ffffff">
+  <meta name="msapplication-TileImage" content="ms-icon-144x144.png">
+  <meta name="theme-color" content="#ffffff">
+  <style>
+    body {font-family: 'Roboto', sans-serif;
+    margin: auto;
+    width: 972;
+    border: 3px solid black;
+    padding: 10px;
+	}
+  </style>
+  <script type="text/javascript">
+  var x = 0;
+  var intervalID = window.setInterval(function()
+  {
+    document.getElementById('latest').src = "https://s3-us-west-2.amazonaws.com/moab.sherlocklabs.io/latest.jpg?random="+new Date().getTime();
+    if (++x === 60) {
+       window.clearInterval(intervalID);
+   }
+  }, 30000);
+  </script>
+  <!-- If you'd like to support IE8 -->
+  <script src="http://vjs.zencdn.net/ie8/1.1.2/videojs-ie8.min.js"></script>
+</head>
+
+<body>
+  <p>
+  <h2>Moab Webcam</h2>
+  <h3>Latest Image</h3><img id="latest" src='http://moab.sherlocklabs.io/latest.jpg' width=972 height=720 /> </p>
+  <h3>Latest Sunset: __date__.</h3>
+  <video id="my-video" class="video-js" controls preload="auto" width="972" height="720" data-setup="{}">
+    <source src="http://moab.sherlocklabs.io/__date__/sunset___date__.webm" type='video/webm'>
+    <source src="http://moab.sherlocklabs.io/__date__/sunset___date__.mp4" type='video/mp4'>
+    <p class="vjs-no-js">
+      To view this video please enable JavaScript, and consider upgrading to a web browser that
+      <a href="http://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+    </p>
+  </video>
+
+ <h3>Last full day: __date__.</h3>
+ <video id="my-video2" class="video-js" controls preload="auto" width="972" height="720" data-setup="{}">
+    <source src="http://moab.sherlocklabs.io/__date__/day___date__.webm" type='video/webm'>
+    <source src="http://moab.sherlocklabs.io/__date__/day___date__.mp4" type='video/mp4'>
+    <p class="vjs-no-js">
+      To view this video please enable JavaScript, and consider upgrading to a web browser that
+      <a href="http://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
+    </p>
+  </video>
+
+  <script src="http://vjs.zencdn.net/5.11.8/video.js"></script>
+</body>
+</html>
