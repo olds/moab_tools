@@ -84,7 +84,7 @@ class Location:
         overlay = Image.new('RGBA', size, (255, 255, 255, 0))
         return overlay
 
-    def _overlay_title(self,img):
+    def _overlay_time(self,img):
         img = img.convert('RGBA')
         # draw text, half opacity
         overlay = self._get_overlay(img.size)
@@ -94,7 +94,7 @@ class Location:
         out = Image.alpha_composite(img, overlay)
         return out
 
-    def _overlay_time(self,img):
+    def _overlay_title(self,img):
         img = img.convert('RGBA')
         # draw text, half opacity
         overlay = self._get_overlay(img.size)
@@ -191,7 +191,6 @@ class Location:
         img = self.get_latest_image()
         self.save_image(img)
 
-
     def get_image_list(self, date, exclude_pattern=None):
         image_list =  self._get_spaces_session().list_objects(Bucket=self.prefix, Prefix="%s_%s" % (self.prefix, date))['Contents']
 
@@ -217,7 +216,6 @@ class Location:
         image_list = self.get_image_list(date)
         for img in image_list:
             client.download_file(self.prefix, img, "%s/%s" % (folder_path, img.split("/")[1]))
-
 
     def create_video(self, date):
         folder_path = "/tmp/%s_%s/" % (self.prefix, date)
