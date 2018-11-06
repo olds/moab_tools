@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from boto3 import session
 
 FONT_ALPHA = (255, 255, 255, 225)
-FONT = ImageFont.truetype('Menlo-Bold.ttf', 16)
+FONT = ImageFont.truetype(os.path.dirname(os.path.realpath(__file__))+'/Menlo-Bold.ttf', 16)
 
 
 class Location:
