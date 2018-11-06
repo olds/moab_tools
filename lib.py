@@ -148,9 +148,15 @@ class Location:
         client = self._get_spaces_session()
 
         client.upload_file(Filename=tmp_file,
-                           Bucket='moab',
+                           Bucket=self.prefix,
                            Key='%s/%s' % (self.get_foldername(), self.get_filename()),
-                           ExtraArgs={'ACL': 'public-read'})
+                           ExtraArgs={'ACL': 'public-read', 'ContentType' : Image.open(tmp_file).get_format_mimetype(), 'ContentDisposition':'inline'})
+
+        client.upload_file(Filename=tmp_file,
+                           Bucket=self.prefix,
+                           Key='latest.png',
+                           ExtraArgs={'ACL': 'public-read', 'ContentType': Image.open(tmp_file).get_format_mimetype(),
+                                      'ContentDisposition': 'inline'})
 
     def get_image_tag(self):
         sunrise = self.weather_data.daily().data[0].sunriseTime.replace(tzinfo=timezone.utc).astimezone(tz=self.get_timezone())
@@ -203,6 +209,8 @@ class Location:
 
             image_files.append(image_filename)
 
+        image_files.sort()
+
         return image_files
 
     def download_image_list(self, date):
@@ -214,15 +222,17 @@ class Location:
             os.mkdir(folder_path)
 
         image_list = self.get_image_list(date)
-        for img in image_list:
-            client.download_file(self.prefix, img, "%s/%s" % (folder_path, img.split("/")[1]))
+        image_list.sort()
+
+        for k,img in enumerate(image_list):
+            client.download_file(self.prefix, img, "%s/%s" % (folder_path, "image-%s.png" % str(k).zfill(3)))
 
     def create_video(self, date):
         folder_path = "/tmp/%s_%s/" % (self.prefix, date)
         import ffmpeg
         (
             ffmpeg
-                .input("%s/*.png" % folder_path, pattern_type='glob', framerate=6)
+                .input("%simage-%%03d.png" % folder_path, pattern_type='sequence', framerate=6)
                 .output('%s.mp4' % date)
                 .run()
         )
