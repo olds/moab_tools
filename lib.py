@@ -155,8 +155,10 @@ class Location:
         client.upload_file(Filename=tmp_file,
                            Bucket=self.prefix,
                            Key='latest.png',
-                           ExtraArgs={'ACL': 'public-read', 'ContentType': Image.open(tmp_file).get_format_mimetype(),
-                                      'ContentDisposition': 'inline'})
+                           ExtraArgs={'ACL': 'public-read',
+                                      'ContentType': Image.open(tmp_file).get_format_mimetype(),
+                                      'ContentDisposition': 'inline',
+                                      'CacheControl': 'max-age=0'})
 
     def get_image_tag(self):
         sunrise = self.weather_data.daily().data[0].sunriseTime.replace(tzinfo=timezone.utc).astimezone(tz=self.get_timezone())
