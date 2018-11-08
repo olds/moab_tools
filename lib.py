@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 from PIL import Image, ImageDraw, ImageFont
-import os, io, forecastio, config, pytz, urllib
+import os, io, forecastio, config, pytz, urllib, shutil, ffmpeg, mimetypes
 from datetime import datetime, timezone
 from boto3 import session
 
@@ -23,8 +23,8 @@ class Location:
     def _get_spaces_session(self):
         bsession = session.Session()
         client = bsession.client('s3',
-                                region_name='sfo2',
-                                endpoint_url='https://sfo2.digitaloceanspaces.com',
+                                region_name=config.S3_REGION,
+                                endpoint_url=config.S3_ENDPOINT,
                                 aws_access_key_id=config.ACCESS_ID,
                                 aws_secret_access_key=config.SECRET_KEY)
 
@@ -41,7 +41,12 @@ class Location:
             os.remove(tmp_file)
 
         if urlo.scheme == 'rtsp':
-            os.system('ffmpeg -rtsp_transport tcp -i "%s" -frames:v 1 -vsync 0 %s' % (self.resource_url, tmp_file))
+            (
+                ffmpeg
+                .input(self.resource_url, rtsp_transport='tcp')
+                .output(tmp_file, **{'frames:v': 1, 'vsync': 0})
+                .run()
+            )
             img = Image.open(tmp_file)
 
         else:
@@ -138,27 +143,27 @@ class Location:
 
         return img
 
-    def save_image(self, img):
+    def save_file_to_s3(self, file, key=None):
+        if key is None:
+            key = '%s/%s' % (self.get_foldername(), os.path.basename(file))
+        client = self._get_spaces_session()
+        client.upload_file(Filename=file,
+                           Bucket=self.prefix,
+                           Key=key,
+                           ExtraArgs={'ACL': 'public-read',
+                                      'ContentType' : mimetypes.guess_type(file)[0],
+                                      'ContentDisposition':'inline',
+                                      'CacheControl': 'max-age=0'})
 
-        tmp_file = "/tmp/%s.png" % self.prefix
+
+    def save_image(self, img):
+        tmp_file = "/tmp/%s.png" % self.get_current_image_filename()
         if os.path.isfile(tmp_file):
             os.remove(tmp_file)
         img.save(tmp_file)
+        self.save_file_to_s3(tmp_file)
+        self.save_file_to_s3(tmp_file, 'latest.png')
 
-        client = self._get_spaces_session()
-
-        client.upload_file(Filename=tmp_file,
-                           Bucket=self.prefix,
-                           Key='%s/%s' % (self.get_foldername(), self.get_filename()),
-                           ExtraArgs={'ACL': 'public-read', 'ContentType' : Image.open(tmp_file).get_format_mimetype(), 'ContentDisposition':'inline'})
-
-        client.upload_file(Filename=tmp_file,
-                           Bucket=self.prefix,
-                           Key='latest.png',
-                           ExtraArgs={'ACL': 'public-read',
-                                      'ContentType': Image.open(tmp_file).get_format_mimetype(),
-                                      'ContentDisposition': 'inline',
-                                      'CacheControl': 'max-age=0'})
 
     def get_image_tag(self):
         sunrise = self.weather_data.daily().data[0].sunriseTime.replace(tzinfo=timezone.utc).astimezone(tz=self.get_timezone())
@@ -187,35 +192,44 @@ class Location:
 
         return tag
 
-    def get_filename(self):
+    def get_current_image_filename(self):
         current_time_str = datetime.now(tz=self.get_timezone()).strftime('%Y-%m-%d_%H-%M-%S')
         return "%s_%s_%s.png" % (self.prefix, current_time_str, self.get_image_tag())
+
+    def get_current_video_filename(self, suffix_tag=''):
+        current_time_str = datetime.now(tz=self.get_timezone()).strftime('%Y-%m-%d')
+        return "%s_%s_%s.mp4" % (self.prefix, current_time_str, suffix_tag)
 
     def get_foldername(self):
         current_date_str = datetime.now(tz=self.get_timezone()).strftime('%Y-%m-%d')
         return "%s_%s" % (self.prefix, current_date_str)
 
     def process(self):
+        current_tag = self.get_image_tag()
+
+        if current_tag == 'night' and datetime.now().minute % 30 != 0:
+            return
+
         img = self.get_latest_image()
         self.save_image(img)
 
-    def get_image_list(self, date, exclude_pattern=None):
-        image_list =  self._get_spaces_session().list_objects(Bucket=self.prefix, Prefix="%s_%s" % (self.prefix, date))['Contents']
+    def get_image_list(self, date, include_tags=None):
+        image_list = self._get_spaces_session().list_objects(Bucket=self.prefix,
+                                                             Prefix="%s_%s" % (self.prefix, date),
+                                                             MaxKeys=3000)['Contents']
 
         image_files = []
         for v in image_list:
             image_filename = v['Key']
 
-            if exclude_pattern and exclude_pattern in image_filename:
-                continue
-
-            image_files.append(image_filename)
+            if not include_tags or any(tag in image_filename for tag in include_tags):
+                image_files.append(image_filename)
 
         image_files.sort()
 
         return image_files
 
-    def download_image_list(self, date):
+    def download_image_list(self, date, tags_to_include=None):
 
         client = self._get_spaces_session()
         folder_path = "/tmp/%s_%s/" % (self.prefix, date)
@@ -223,18 +237,26 @@ class Location:
         if not os.path.isdir(folder_path):
             os.mkdir(folder_path)
 
-        image_list = self.get_image_list(date)
+        image_list = self.get_image_list(date, tags_to_include)
         image_list.sort()
 
         for k,img in enumerate(image_list):
             client.download_file(self.prefix, img, "%s/%s" % (folder_path, "image-%s.png" % str(k).zfill(3)))
 
-    def create_video(self, date):
+    def create_video(self, date, tags_to_include=None, framerate=30, filename=None, video_type='mp4'):
+        if tags_to_include is None:
+            tags_to_include = ['sunrise', 'day', 'sunset', 'dusk']
+
+        if filename is None:
+            filename = '%s.%s' % (date, video_type)
+
+        self.download_image_list(date, tags_to_include)
         folder_path = "/tmp/%s_%s/" % (self.prefix, date)
-        import ffmpeg
         (
             ffmpeg
-                .input("%simage-%%03d.png" % folder_path, pattern_type='sequence', framerate=6)
-                .output('%s.mp4' % date)
+                .input("%simage-%%03d.png" % folder_path, pattern_type='sequence', framerate=framerate)
+                .output('/tmp/%s' % filename)
                 .run()
         )
+
+        shutil.rmtree(path=folder_path, ignore_errors=True)
