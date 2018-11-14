@@ -1,15 +1,25 @@
 from urllib.parse import urlparse
 from PIL import Image, ImageDraw, ImageFont
-import os, io, forecastio, config, pytz, urllib, shutil, ffmpeg, mimetypes
+import os, io, forecastio, config, pytz, urllib, shutil, ffmpeg, mimetypes, time
 from datetime import datetime, timezone
 from boto3 import session
+from aws_requests_auth.aws_auth import AWSRequestsAuth
+from concurrent.futures import ThreadPoolExecutor
+from requests_futures.sessions import FuturesSession
 
 FONT_ALPHA = (255, 255, 255, 225)
 FONT = ImageFont.truetype(os.path.dirname(os.path.realpath(__file__))+'/Menlo-Bold.ttf', 16)
 
 
+def save_to_file(sess, resp):
+    filename = resp.request.path_url.split("/", 1)[1]
+    with open('/tmp/%s' % filename, 'wb') as fd:
+        for chunk in resp.iter_content(chunk_size=128):
+            fd.write(chunk)
+
 class Location:
-    def __init__(self, resource_url, lat, lon, overlay_weather=True, overlay_title=False, title = None, overlay_time=True, prefix=None):
+    def __init__(self, resource_url, lat, lon, overlay_weather=True, overlay_title=False, title = None,
+                 overlay_time=True, prefix=None, frequency=1):
         self.resource_url = resource_url
         self.lat = lat
         self.lon = lon
@@ -18,6 +28,7 @@ class Location:
         self.title = title
         self.overlay_title = overlay_title
         self.overlay_time = overlay_time
+        self.frequency = frequency
         self.weather_data = forecastio.load_forecast(config.DARKSKY_API_KEY, self.lat, self.lon, lazy=False)
 
     def _get_spaces_session(self):
@@ -54,8 +65,11 @@ class Location:
 
         return img
 
-
     def get_temp(self):
+        """
+        Returns a tuple of the current temperature in F and C
+        :return: tuple (f, c)
+        """
         temp = self.weather_data.currently().apparentTemperature
         f = round(float(temp), 1)
         c = (f - 32) * 5 / 9
@@ -210,6 +224,9 @@ class Location:
         if current_tag == 'night' and datetime.now().minute % 30 != 0:
             return
 
+        if datetime.now().minute % self.frequency != 0:
+            return
+
         img = self.get_latest_image()
         self.save_image(img)
 
@@ -231,8 +248,7 @@ class Location:
 
     def download_image_list(self, date, tags_to_include=None):
 
-        client = self._get_spaces_session()
-        folder_path = "/tmp/%s_%s/" % (self.prefix, date)
+        folder_path = "/tmp/%s/" % self.get_foldername()
 
         if not os.path.isdir(folder_path):
             os.mkdir(folder_path)
@@ -240,18 +256,37 @@ class Location:
         image_list = self.get_image_list(date, tags_to_include)
         image_list.sort()
 
-        for k,img in enumerate(image_list):
-            client.download_file(self.prefix, img, "%s/%s" % (folder_path, "image-%s.png" % str(k).zfill(3)))
+        fsession = FuturesSession(executor=ThreadPoolExecutor(max_workers=20))
+        auth = AWSRequestsAuth(aws_access_key=config.ACCESS_ID,
+                               aws_secret_access_key=config.SECRET_KEY,
+                               aws_host='%s.sfo2.digitaloceanspaces.com' % self.prefix,
+                               aws_region='sfo2',
+                               aws_service=self.prefix)
+
+        _requests = []
+        for img in image_list:
+            r = fsession.get('https://%s.sfo2.digitaloceanspaces.com/%s' % (self.prefix, img),
+                             auth=auth,
+                             background_callback=save_to_file)
+            _requests.append(r)
+
+        for r in _requests:
+            x = r.result()
+
+        time.sleep(2)
+
+        for k, img in enumerate(image_list):
+            os.rename('/tmp/%s/%s' % (self.get_foldername(), img.split("/")[1:][0]), "/tmp/%s/image-%s.png" % (self.get_foldername(), str(k).zfill(3)))
 
     def create_video(self, date, tags_to_include=None, framerate=30, filename=None, video_type='mp4'):
         if tags_to_include is None:
             tags_to_include = ['sunrise', 'day', 'sunset', 'dusk']
 
         if filename is None:
-            filename = '%s.%s' % (date, video_type)
+            filename = '%s_%s.%s' % (self.prefix, date, video_type)
 
         self.download_image_list(date, tags_to_include)
-        folder_path = "/tmp/%s_%s/" % (self.prefix, date)
+        folder_path = "/tmp/%s/" % (self.get_foldername())
         (
             ffmpeg
                 .input("%simage-%%03d.png" % folder_path, pattern_type='sequence', framerate=framerate)
@@ -260,3 +295,5 @@ class Location:
         )
 
         shutil.rmtree(path=folder_path, ignore_errors=True)
+
+        self.save_file_to_s3('/tmp/%s' % filename)
