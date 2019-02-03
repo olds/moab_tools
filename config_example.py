@@ -1,4 +1,4 @@
-from lib import Location
+from moabim.lib import Location
 
 DARKSKY_API_KEY = 'xxx'
 

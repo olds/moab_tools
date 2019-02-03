@@ -90,3 +90,5 @@ ENV/
 .ropeproject
 config.py
 *.ipynb
+*.xml
+*.iml
