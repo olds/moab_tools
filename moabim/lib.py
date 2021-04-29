@@ -83,8 +83,10 @@ class Location:
         return location_timezone
 
     def resize_image(self, img):
-        if img.width > 1152:
-            resized = img.resize((1152, 768), Image.LANCZOS)
+        # target 720p image size
+        if img.width > 1280:
+            new_height = int((1280/img.width) * img.height)
+            resized = img.resize((1280, new_height), Image.LANCZOS)
         else:
             resized = img
 
